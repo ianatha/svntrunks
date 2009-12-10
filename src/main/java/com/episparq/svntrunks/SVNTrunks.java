@@ -15,6 +15,7 @@ import org.tmatesoft.svn.core.io.SVNRepository;
 import org.tmatesoft.svn.core.io.SVNRepositoryFactory;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.PrintStream;
 import java.util.Collection;
 import java.util.Iterator;
@@ -24,7 +25,7 @@ import java.util.concurrent.PriorityBlockingQueue;
  * @author Ian Atha <thatha@thatha.org>
  */
 public class SVNTrunks {
-    private final ProgressMonitor monitor;
+    private ProgressMonitor monitor;
     private final String base;
     private final SVNRepository repository;
     private final DirectedGraph<String, DefaultEdge> graph = new DefaultDirectedGraph<String, DefaultEdge>(DefaultEdge.class);
@@ -32,7 +33,6 @@ public class SVNTrunks {
 
     volatile int enqueued = 0;
     volatile int solved = 0;
-    volatile boolean stopWorking = false;
 
     private void enqueue(String s) {
         enqueued++;
@@ -41,12 +41,14 @@ public class SVNTrunks {
 
     private void findTrunks() throws SVNException {
         String location;
-        while (((location = queue.poll()) != null) && !monitor.isCanceled()) {
+        while (((location = queue.poll()) != null) && ((monitor == null) || !monitor.isCanceled())) {
             solved++;
 
-            monitor.setMaximum(enqueued);
-            monitor.setProgress(solved);
-            monitor.setNote(String.format("(%2.0f%%) %s", (float) solved / enqueued * 100, location));
+            if (monitor != null) {
+                monitor.setMaximum(enqueued);
+                monitor.setProgress(solved);
+                monitor.setNote(String.format("(%2.0f%%) %s", (float) solved / enqueued * 100, location));
+            }
 
             Collection<SVNDirEntry> entries = repository.getDir(location, -1, null, SVNDirEntry.DIRENT_KIND, (Collection) null);
 
@@ -85,9 +87,17 @@ public class SVNTrunks {
     }
 
     public SVNTrunks(String repositoryURL, PrintStream out) throws SVNException {
-        monitor = new ProgressMonitor(null, String.format("%s", repositoryURL), "", 1, 1);
-        monitor.setMillisToDecideToPopup(0);
-        monitor.setMillisToPopup(0);
+        try {
+            monitor = new ProgressMonitor(null, String.format("%s", repositoryURL), "", 1, 1);
+        } catch (HeadlessException e) {
+            monitor = null;
+        }
+
+        if (monitor != null) {
+            monitor.setMillisToDecideToPopup(0);
+            monitor.setMillisToPopup(0);
+        }
+
         base = repositoryURL;
 
         try {
@@ -100,7 +110,7 @@ public class SVNTrunks {
             enqueue("");
             findTrunks();
 
-            if (!monitor.isCanceled()) {
+            if (monitor == null || !monitor.isCanceled()) {
                 out.println(String.format("svn co --depth=immediates %s && cd `basename !$`", base));
                 for (Iterator<String> iterator = new TopologicalOrderIterator<String, DefaultEdge>(graph); iterator.hasNext();) {
                     String entry = iterator.next();
@@ -121,11 +131,16 @@ public class SVNTrunks {
             JOptionPane.showMessageDialog(null, e.getLocalizedMessage());
             throw e;
         } finally {
-            monitor.close();
+            if (monitor != null) {
+                monitor.close();
+            }
         }
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length != 1) {
+            System.out.println("This utility expects one argument, a URI to an SVN repository.");
+        }
         new SVNTrunks(args[0], System.out);
     }
 }
