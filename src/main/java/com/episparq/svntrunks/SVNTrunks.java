@@ -25,7 +25,8 @@ import java.util.concurrent.PriorityBlockingQueue;
  * @author Ian Atha <thatha@thatha.org>
  */
 public class SVNTrunks {
-    private ProgressMonitor monitor;
+    private final boolean headless = GraphicsEnvironment.isHeadless();
+    private ProgressMonitor monitor = null;
     private final String base;
     private final SVNRepository repository;
     private final DirectedGraph<String, DefaultEdge> graph = new DefaultDirectedGraph<String, DefaultEdge>(DefaultEdge.class);
@@ -41,10 +42,10 @@ public class SVNTrunks {
 
     private void findTrunks() throws SVNException {
         String location;
-        while (((location = queue.poll()) != null) && ((monitor == null) || !monitor.isCanceled())) {
+        while (((location = queue.poll()) != null) && (headless || !monitor.isCanceled())) {
             solved++;
 
-            if (monitor != null) {
+            if (!headless) {
                 monitor.setMaximum(enqueued);
                 monitor.setProgress(solved);
                 monitor.setNote(String.format("(%2.0f%%) %s", (float) solved / enqueued * 100, location));
@@ -87,13 +88,11 @@ public class SVNTrunks {
     }
 
     public SVNTrunks(String repositoryURL, PrintStream out) throws SVNException {
-        try {
+        if (!headless) {
             monitor = new ProgressMonitor(null, String.format("%s", repositoryURL), "", 1, 1);
-        } catch (HeadlessException e) {
-            monitor = null;
         }
 
-        if (monitor != null) {
+        if (!headless) {
             monitor.setMillisToDecideToPopup(0);
             monitor.setMillisToPopup(0);
         }
@@ -110,7 +109,7 @@ public class SVNTrunks {
             enqueue("");
             findTrunks();
 
-            if (monitor == null || !monitor.isCanceled()) {
+            if (headless || !monitor.isCanceled()) {
                 out.println(String.format("svn co --depth=immediates %s && cd `basename !$`", base));
                 for (Iterator<String> iterator = new TopologicalOrderIterator<String, DefaultEdge>(graph); iterator.hasNext();) {
                     String entry = iterator.next();
@@ -125,13 +124,15 @@ public class SVNTrunks {
                     }
                 }
                 out.println(String.format("svn up && svn st && cd .."));
+            } else {
+                out.println("# Aborted");
             }
             repository.closeSession();
         } catch (SVNException e) {
             JOptionPane.showMessageDialog(null, e.getLocalizedMessage());
             throw e;
         } finally {
-            if (monitor != null) {
+            if (!headless) {
                 monitor.close();
             }
         }
