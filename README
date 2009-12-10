@@ -1,0 +1,3 @@
+To use me,
+
+java -jar target/*jar-with-dependencies.jar svn+ssh://svn.example.com/skunkworks/alpha/

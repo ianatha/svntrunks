@@ -15,11 +15,12 @@ import org.tmatesoft.svn.core.io.SVNRepository;
 import org.tmatesoft.svn.core.io.SVNRepositoryFactory;
 
 import java.io.PrintStream;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.List;
 
+/**
+ * @author Ian Atha <thatha@thatha.org>
+ */
 public class SVNTrunks {
     final String base;
     final SVNRepository repository;
@@ -29,10 +30,8 @@ public class SVNTrunks {
     private void findTrunks(String location) throws SVNException {
         Collection<SVNDirEntry> entries = repository.getDir(location, -1, null, SVNDirEntry.DIRENT_KIND, (Collection) null);
 
-        List<String> names = new ArrayList<String>(entries.size());
         int structuralDirsFound = 0;
-        for (Iterator<SVNDirEntry> iterator = entries.iterator(); iterator.hasNext();) {
-            SVNDirEntry entry = iterator.next();
+        for (SVNDirEntry entry : entries) {
             if (entry.getName().equals("trunk") || entry.getName().equals("tags") || entry.getName().equals("branches")) {
                 structuralDirsFound++;
             }
@@ -51,10 +50,9 @@ public class SVNTrunks {
             }
         } else {
             int traversed = 0;
-            for (Iterator<SVNDirEntry> iterator = entries.iterator(); iterator.hasNext();) {
-                SVNDirEntry entry = iterator.next();
+            for (SVNDirEntry entry : entries) {
                 if (entry.getKind() == SVNNodeKind.DIR) {
-                    String nextLocation = location +  "/" + entry.getRelativePath();
+                    String nextLocation = location + "/" + entry.getRelativePath();
                     traversed++;
                     findTrunks(nextLocation);
                 }
@@ -75,9 +73,9 @@ public class SVNTrunks {
         findTrunks("");
 
         out.println(String.format("svn co --depth=immediates %s && cd `basename !$`", base));
-        for (Iterator<String> iterator = new TopologicalOrderIterator(graph); iterator.hasNext();) {
+        for (Iterator<String> iterator = new TopologicalOrderIterator<String, DefaultEdge>(graph); iterator.hasNext();) {
             String entry = iterator.next();
-                if (!entry.equals("/")) {
+            if (!entry.equals("/")) {
                 String depth;
                 if (entry.endsWith("/trunk/")) {
                     depth = "infinity";
