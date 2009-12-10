@@ -14,11 +14,14 @@ import org.tmatesoft.svn.core.internal.wc.DefaultSVNAuthenticationManager;
 import org.tmatesoft.svn.core.io.SVNRepository;
 import org.tmatesoft.svn.core.io.SVNRepositoryFactory;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JOptionPane;
+import javax.swing.ProgressMonitor;
+import java.awt.GraphicsEnvironment;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.PriorityBlockingQueue;
 
 /**
@@ -87,6 +90,15 @@ public class SVNTrunks {
         }
     }
 
+    private String joinListOfStrings(List<? extends CharSequence> list, String delimiter) {
+        StringBuffer result = new StringBuffer();
+        for (CharSequence s : list) {
+            result.append(s).append(delimiter);
+        }
+        result.replace(result.length() - delimiter.length(), result.length(), "");
+        return result.toString();
+    }
+
     public SVNTrunks(String repositoryURL, PrintStream out) throws SVNException {
         if (!headless) {
             monitor = new ProgressMonitor(null, String.format("%s", repositoryURL), "", 1, 1);
@@ -111,20 +123,25 @@ public class SVNTrunks {
 
             if (headless || !monitor.isCanceled()) {
                 String[] splitbase = base.split("/");
-                out.println(String.format("svn co --depth=immediates %s && cd %s && \\", base, splitbase[splitbase.length - 1]));
+                out.print(String.format("svn co --depth=immediates %s && cd %s && \\\n", base, splitbase[splitbase.length - 1]));
+                List<String> intermediatesAccumulator = new ArrayList<String>();
+                List<String> trunksAccumulator = new ArrayList<String>();
+
                 for (Iterator<String> iterator = new TopologicalOrderIterator<String, DefaultEdge>(graph); iterator.hasNext();) {
-                    String entry = iterator.next();
+                    String entry = iterator.next().replaceFirst("^/(?!trunk)", "");
                     if (!entry.equals("/")) {
-                        String depth;
                         if (entry.endsWith("/trunk/")) {
-                            depth = "infinity";
+                            trunksAccumulator.add(entry);
                         } else {
-                            depth = "immediates";
+                            intermediatesAccumulator.add(entry);
                         }
-                        out.print(String.format("svn up --set-depth %s %s%s",
-                                depth, entry.replaceFirst("^/", ""), " && \\\n"));
                     }
                 }
+
+                String format = "svn up --set-depth %s %s && \\\n";
+                out.print(String.format(format, "immediates", joinListOfStrings(intermediatesAccumulator, " ")));
+                out.print(String.format(format, "infinity", joinListOfStrings(trunksAccumulator, " ")));
+
                 out.println(String.format("svn up && svn st && cd .."));
             } else {
                 out.println("# Aborted");
