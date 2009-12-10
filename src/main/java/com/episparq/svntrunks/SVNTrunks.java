@@ -25,7 +25,7 @@ import java.util.concurrent.PriorityBlockingQueue;
  * @author Ian Atha <thatha@thatha.org>
  */
 public class SVNTrunks {
-    private final boolean headless = GraphicsEnvironment.isHeadless();
+    private final boolean headless = GraphicsEnvironment.isHeadless() || (System.getProperty("headless") != null);
     private ProgressMonitor monitor = null;
     private final String base;
     private final SVNRepository repository;
@@ -110,7 +110,8 @@ public class SVNTrunks {
             findTrunks();
 
             if (headless || !monitor.isCanceled()) {
-                out.println(String.format("svn co --depth=immediates %s && cd `basename !$`", base));
+                String[] splitbase = base.split("/");
+                out.println(String.format("svn co --depth=immediates %s && cd %s && \\", base, splitbase[splitbase.length - 1]));
                 for (Iterator<String> iterator = new TopologicalOrderIterator<String, DefaultEdge>(graph); iterator.hasNext();) {
                     String entry = iterator.next();
                     if (!entry.equals("/")) {
@@ -120,7 +121,8 @@ public class SVNTrunks {
                         } else {
                             depth = "immediates";
                         }
-                        out.println(String.format("svn up --set-depth %s %s", depth, entry.replaceFirst(base, "")));
+                        out.print(String.format("svn up --set-depth %s %s%s",
+                                depth, entry.replaceFirst("^/", ""), " && \\\n"));
                     }
                 }
                 out.println(String.format("svn up && svn st && cd .."));
